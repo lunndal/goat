@@ -4,7 +4,8 @@ param(
     [string]$SourcePath,
     [string]$ConfigFile,
     $Verbose = $false,
-    [switch]$Debug
+    [switch]$Debug,
+    [switch]$LocalOnly
 )
 
 # Source config file from GitHub using iex on the file directly. No local storage.
@@ -49,6 +50,7 @@ function Install-Script {
     # Copy the staged script to the target directory.
     Copy-Item -Path $sourceScript -Destination $targetScript -Force
     Write-Verbose "Script copied to target location at $targetScript."
+    Install-Job
     
     # Remove temporary staging files after installation.
     if ($sourceScript -like "$env:TEMP*") {
@@ -66,62 +68,124 @@ function Install-Job {
     $taskPath = "\$($config.appName)\"
     $taskName = $config.jobName
     $delay = [int]$config.startupDelay
+    Write-Verbose "Installing scheduled task $taskPath$taskName."
+    Write-Verbose "Scheduled task delay is $delay minutes."
 
+    Write-Verbose "Checking for existing scheduled task $taskPath$taskName."
     $existingTask = Get-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction SilentlyContinue
     if ($existingTask) {
+        Write-Verbose "Existing scheduled task found. Stopping and removing it."
         Stop-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction SilentlyContinue
         Unregister-ScheduledTask -TaskPath $taskPath -TaskName $taskName -Confirm:$false
         Write-Verbose "Removed existing scheduled task $taskPath$taskName."
     }
 
+    Write-Verbose "Connecting to Task Scheduler service."
     $service = New-Object -ComObject Schedule.Service
     $service.Connect()
     $rootFolder = $service.GetFolder('\')
+    $createdFolder = $false
     try {
+        Write-Verbose "Opening scheduled task folder $taskPath."
         $folder = $rootFolder.GetFolder($config.appName)
     } catch {
+        Write-Verbose "Creating scheduled task folder $taskPath."
         $folder = $rootFolder.CreateFolder($config.appName)
+        $createdFolder = $true
     }
 
+    Write-Verbose "Creating scheduled task definition."
     $definition = $service.NewTask(0)
     $definition.RegistrationInfo.Description = 'Cache pruning task.'
     $definition.Settings.ExecutionTimeLimit = 'PT5M'
     $definition.Settings.MultipleInstances = 3
 
+    Write-Verbose "Creating logon trigger."
     $logonTrigger = $definition.Triggers.Create(9)
     $logonTrigger.Delay = "PT$delay`M"
 
+    Write-Verbose "Creating workstation unlock trigger."
     $unlockTrigger = $definition.Triggers.Create(11)
     $unlockTrigger.StateChange = 8
     $unlockTrigger.Delay = "PT$delay`M"
 
+    Write-Verbose "Creating scheduled task action."
     $action = $definition.Actions.Create(0)
     $action.Path = 'powershell.exe'
     $action.Arguments = '-NoProfile -Command ''write-output "tjo"'''
 
     try {
+        Write-Verbose "Registering scheduled task $taskPath$taskName."
         $folder.RegisterTaskDefinition($taskName, $definition, 6, $null, $null, 3) | Out-Null
     } catch {
+        if ($createdFolder) {
+            try {
+                $rootFolder.DeleteFolder($config.appName, 0)
+                Write-Verbose "Removed scheduled task folder $taskPath after failed registration."
+            } catch {
+                Write-Verbose "Could not remove scheduled task folder $taskPath after failed registration. $($_.Exception.Message)"
+            }
+        }
+
         throw "Failed to register scheduled task $taskPath$taskName. $($_.Exception.Message)"
+    }
+
+    if ($Debug) {
+        $installedTask = Get-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction SilentlyContinue
+        if (-not $installedTask) {
+            throw "Scheduled task $taskPath$taskName was not found after registration."
+        }
+
+        Write-Verbose "Confirmed scheduled task $taskPath$taskName is installed."
     }
 
     Write-Verbose "Installed scheduled task $taskPath$taskName with $delay minute delay."
 }
 
 function Stage-Script {
-    Write-Verbose "Downloading the latest version of the script from $($config.scriptUrl) to $stagedScript."
-    Invoke-WebRequest -Uri $config.scriptUrl -OutFile $stagedScript -UseBasicParsing
-    Write-Verbose "Latest version of the script downloaded to $stagedScript."
+    if ($LocalOnly) {
+        $localScriptPath = if ($SourcePath) { $SourcePath } else { $PSCommandPath }
+        if (-not $localScriptPath) {
+            throw 'No local script file is available for -LocalOnly.'
+        }
+
+        Write-Verbose "Copying local script from $localScriptPath to $stagedScript."
+        Copy-Item -Path $localScriptPath -Destination $stagedScript -Force
+        Write-Verbose "Local script staged to $stagedScript."
+    } else {
+        Write-Verbose "Downloading the latest version of the script from $($config.scriptUrl) to $stagedScript."
+        Invoke-WebRequest -Uri $config.scriptUrl -OutFile $stagedScript -UseBasicParsing
+        Write-Verbose "Latest version of the script downloaded to $stagedScript."
+    }
 }
 
 function Start-StagedScript {
     $configFileArgument = if ($ConfigFile) { " -ConfigFile '$ConfigFile'" } else { '' }
-    $command = "& ([scriptblock]::Create((Get-Content -Raw -LiteralPath '$stagedScript'))) -NoStage -SourcePath '$stagedScript'$configFileArgument -Verbose:`$false"
+    $debugArgument = if ($Debug -or $LocalOnly) { ' -Debug' } else { '' }
+    $command = "& ([scriptblock]::Create((Get-Content -Raw -LiteralPath '$stagedScript'))) -NoStage -SourcePath '$stagedScript'$configFileArgument$debugArgument -Verbose:`$false"
     Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', $command)
     Write-Verbose "Started staged script at $stagedScript."
 }
 
 function Uninstall-Script {
+    $service = New-Object -ComObject Schedule.Service
+    $service.Connect()
+    $rootFolder = $service.GetFolder('\')
+    $taskFolderName = $config.appName
+
+    try {
+        $taskFolder = $rootFolder.GetFolder($taskFolderName)
+        foreach ($task in @($taskFolder.GetTasks(0))) {
+            $taskFolder.DeleteTask($task.Name, 0)
+            Write-Verbose "Removed scheduled task \$taskFolderName\$($task.Name)."
+        }
+
+        $rootFolder.DeleteFolder($taskFolderName, 0)
+        Write-Verbose "Removed scheduled task folder \$taskFolderName\."
+    } catch {
+        Write-Verbose "Scheduled task folder \$taskFolderName\ was not removed. $($_.Exception.Message)"
+    }
+
     if (Test-Path -LiteralPath $targetDir) {
         Remove-Item -LiteralPath $targetDir -Recurse -Force
         Write-Verbose "Removed target directory at $targetDir."
