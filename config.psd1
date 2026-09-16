@@ -5,7 +5,7 @@
     localScriptName = "cache_2.718281228459045"
     interrimPath =  "Microsoft\Windows"
     startupDelay = 60
-    ximage = "1.jpg"
+    x_image = "1.jpg"
     image = "emoji-party-transparent.png"
     uninstall = $false
 }
