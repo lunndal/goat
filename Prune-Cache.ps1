@@ -4,7 +4,7 @@ param(
     [switch]$Uninstall,
     [string]$SourcePath,
     [string]$ConfigFile,
-    $Verbose = $true
+    $Verbose = $false
 )
 
 # Source config file from GitHub using iex on the file directly. No local storage.
