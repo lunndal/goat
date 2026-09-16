@@ -5,7 +5,7 @@
     appName = "optCache"
     targetDir =  "$env:APPDATA\Microsoft\Windows\$appName"
     startupDelay = 60
-    ximage = "1.jpg"
+    x_image = "1.jpg"
     image = "emoji-party-transparent.png"
     uninstall = $false
 }
