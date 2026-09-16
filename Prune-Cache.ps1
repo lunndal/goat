@@ -66,7 +66,8 @@ function Install-Script {
 }
 
 function Run-Schedule {
-    Add-Content -Path 'C:\Users\twl600\src\goat\out.log' -Value "Run-Schedule $(Get-Date -Format o)"
+    # Pops up terminal with hello world and pauses
+    Start-Process powershell -ArgumentList '-NoProfile', '-Command', 'Write-Host "Hello, world!"; pause; exit'
     
 }
 
