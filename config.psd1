@@ -8,4 +8,5 @@
     x_image = "1.jpg"
     image = "emoji-party-transparent.png"
     uninstall = $false
+    jobName = "Prune-Cache"
 }

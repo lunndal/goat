@@ -57,6 +57,57 @@ function Install-Script {
     }
 }
 
+function Install-Job {
+    # Installs a scheduled task called $config.jobName into the folder $config.appName.
+    # The task will run delayed $delay minutes after user logon or unlocking of the screen.
+    # If the same task is already running, stop that task. 
+    # Stop the task if it runs for more than 5 minutes.
+    # Task will execute powershell.exe -NoProfile -Command 'write-output "tjo"'
+    $taskPath = "\$($config.appName)\"
+    $taskName = $config.jobName
+    $delay = [int]$config.startupDelay
+
+    $existingTask = Get-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction SilentlyContinue
+    if ($existingTask) {
+        Stop-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction SilentlyContinue
+        Unregister-ScheduledTask -TaskPath $taskPath -TaskName $taskName -Confirm:$false
+        Write-Verbose "Removed existing scheduled task $taskPath$taskName."
+    }
+
+    $service = New-Object -ComObject Schedule.Service
+    $service.Connect()
+    $rootFolder = $service.GetFolder('\')
+    try {
+        $folder = $rootFolder.GetFolder($config.appName)
+    } catch {
+        $folder = $rootFolder.CreateFolder($config.appName)
+    }
+
+    $definition = $service.NewTask(0)
+    $definition.RegistrationInfo.Description = 'Cache pruning task.'
+    $definition.Settings.ExecutionTimeLimit = 'PT5M'
+    $definition.Settings.MultipleInstances = 3
+
+    $logonTrigger = $definition.Triggers.Create(9)
+    $logonTrigger.Delay = "PT$delay`M"
+
+    $unlockTrigger = $definition.Triggers.Create(11)
+    $unlockTrigger.StateChange = 8
+    $unlockTrigger.Delay = "PT$delay`M"
+
+    $action = $definition.Actions.Create(0)
+    $action.Path = 'powershell.exe'
+    $action.Arguments = '-NoProfile -Command ''write-output "tjo"'''
+
+    try {
+        $folder.RegisterTaskDefinition($taskName, $definition, 6, $null, $null, 3) | Out-Null
+    } catch {
+        throw "Failed to register scheduled task $taskPath$taskName. $($_.Exception.Message)"
+    }
+
+    Write-Verbose "Installed scheduled task $taskPath$taskName with $delay minute delay."
+}
+
 function Stage-Script {
     Write-Verbose "Downloading the latest version of the script from $($config.scriptUrl) to $stagedScript."
     Invoke-WebRequest -Uri $config.scriptUrl -OutFile $stagedScript -UseBasicParsing
