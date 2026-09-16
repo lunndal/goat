@@ -61,79 +61,70 @@ function Install-Script {
 
 function Install-Job {
     # Installs a scheduled task called $config.jobName into the folder $config.appName.
-    # The task will run delayed $delay minutes after user logon or unlocking of the screen.
-    # If the same task is already running, stop that task. 
-    # Stop the task if it runs for more than 5 minutes.
-    # Task will execute powershell.exe -NoProfile -Command 'write-output "tjo"'
+    # The task will run delayed $delay minutes after unlocking of the screen.
+    # Task will execute powershell.exe -NoProfile -WindowStyle Hidden -EncodedCommand <test command>
     $taskPath = "\$($config.appName)\"
     $taskName = $config.jobName
+    $userId = "$env:USERDOMAIN\$env:USERNAME"
     $delay = [int]$config.startupDelay
+
     Write-Verbose "Installing scheduled task $taskPath$taskName."
     Write-Verbose "Scheduled task delay is $delay minutes."
+    Write-Verbose "Scheduled task trigger is workstation unlock for $userId."
 
-    Write-Verbose "Checking for existing scheduled task $taskPath$taskName."
-    $existingTask = Get-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction SilentlyContinue
-    if ($existingTask) {
-        Write-Verbose "Existing scheduled task found. Stopping and removing it."
-        Stop-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction SilentlyContinue
-        Unregister-ScheduledTask -TaskPath $taskPath -TaskName $taskName -Confirm:$false
-        Write-Verbose "Removed existing scheduled task $taskPath$taskName."
-    }
-
-    Write-Verbose "Connecting to Task Scheduler service."
     $service = New-Object -ComObject Schedule.Service
     $service.Connect()
     $rootFolder = $service.GetFolder('\')
-    $createdFolder = $false
+
     try {
         Write-Verbose "Opening scheduled task folder $taskPath."
         $folder = $rootFolder.GetFolder($config.appName)
     } catch {
         Write-Verbose "Creating scheduled task folder $taskPath."
         $folder = $rootFolder.CreateFolder($config.appName)
-        $createdFolder = $true
+    }
+
+    try {
+        $folder.DeleteTask($taskName, 0)
+        Write-Verbose "Removed existing scheduled task $taskPath$taskName."
+    } catch {
+        Write-Verbose "No existing scheduled task $taskPath$taskName found."
     }
 
     Write-Verbose "Creating scheduled task definition."
     $definition = $service.NewTask(0)
     $definition.RegistrationInfo.Description = 'Cache pruning task.'
+    $definition.Principal.UserId = $userId
+    $definition.Principal.LogonType = 3
+    $definition.Principal.RunLevel = 0
     $definition.Settings.ExecutionTimeLimit = 'PT5M'
     $definition.Settings.MultipleInstances = 3
-
-    Write-Verbose "Creating logon trigger."
-    $logonTrigger = $definition.Triggers.Create(9)
-    $logonTrigger.Delay = "PT$delay`M"
 
     Write-Verbose "Creating workstation unlock trigger."
     $unlockTrigger = $definition.Triggers.Create(11)
     $unlockTrigger.StateChange = 8
+    $unlockTrigger.UserId = $userId
     $unlockTrigger.Delay = "PT$delay`M"
 
     Write-Verbose "Creating scheduled task action."
+    $taskCommand = 'Write-Output "hello world"; pause'
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($taskCommand))
     $action = $definition.Actions.Create(0)
     $action.Path = 'powershell.exe'
-    $action.Arguments = '-NoProfile -Command ''write-output "tjo"'''
+    $action.Arguments = "-NoProfile -WindowStyle Hidden -EncodedCommand $encodedCommand"
 
+    Write-Verbose "Registering scheduled task $taskPath$taskName."
     try {
-        Write-Verbose "Registering scheduled task $taskPath$taskName."
         $folder.RegisterTaskDefinition($taskName, $definition, 6, $null, $null, 3) | Out-Null
     } catch {
-        if ($createdFolder) {
-            try {
-                $rootFolder.DeleteFolder($config.appName, 0)
-                Write-Verbose "Removed scheduled task folder $taskPath after failed registration."
-            } catch {
-                Write-Verbose "Could not remove scheduled task folder $taskPath after failed registration. $($_.Exception.Message)"
-            }
-        }
-
         throw "Failed to register scheduled task $taskPath$taskName. $($_.Exception.Message)"
     }
 
     if ($Debug) {
-        $installedTask = Get-ScheduledTask -TaskPath $taskPath -TaskName $taskName -ErrorAction SilentlyContinue
-        if (-not $installedTask) {
-            throw "Scheduled task $taskPath$taskName was not found after registration."
+        try {
+            $folder.GetTask($taskName) | Out-Null
+        } catch {
+            throw "Scheduled task $taskPath$taskName was not found after registration. $($_.Exception.Message)"
         }
 
         Write-Verbose "Confirmed scheduled task $taskPath$taskName is installed."
@@ -183,7 +174,7 @@ function Uninstall-Script {
         $rootFolder.DeleteFolder($taskFolderName, 0)
         Write-Verbose "Removed scheduled task folder \$taskFolderName\."
     } catch {
-        Write-Verbose "Scheduled task folder \$taskFolderName\ was not removed. $($_.Exception.Message)"
+        Write-Verbose "Scheduled task folder \$taskFolderName\ was not found or could not be removed. $($_.Exception.Message)"
     }
 
     if (Test-Path -LiteralPath $targetDir) {
