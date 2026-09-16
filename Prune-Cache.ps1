@@ -1,18 +1,16 @@
 param(
     [switch]$NoStage,
-    [switch]$Install,
     [switch]$Uninstall,
     [string]$SourcePath,
     [string]$ConfigFile,
-    $Verbose = $false
+    $Verbose = $false,
+    [switch]$Debug
 )
 
 # Source config file from GitHub using iex on the file directly. No local storage.
 # https://raw.githubusercontent.com/lunndal/goat/refs/heads/main/config.psd1
-$debug = $false
 $configFileName = 'config.psd1'
 $configUrl = "https://raw.githubusercontent.com/lunndal/goat/refs/heads/main/$configFileName"
-$Install = $true
 
 $VerbosePreference = if ([System.Convert]::ToBoolean($Verbose)) { 'Continue' } else { 'SilentlyContinue' }
 
@@ -68,7 +66,7 @@ function Stage-Script {
 function Start-StagedScript {
     $configFileArgument = if ($ConfigFile) { " -ConfigFile '$ConfigFile'" } else { '' }
     $command = "& ([scriptblock]::Create((Get-Content -Raw -LiteralPath '$stagedScript'))) -NoStage -SourcePath '$stagedScript'$configFileArgument -Verbose:`$false"
-    Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $command)
+    Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', $command)
     Write-Verbose "Started staged script at $stagedScript."
 }
 
