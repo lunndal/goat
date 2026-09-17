@@ -4,8 +4,8 @@
     localScriptName = "cache_2.718281228459045"
     interrimPath =  "Microsoft\Windows"
     startupDelay = 60
-    image = "1.jpg"
-    ximage = "emoji-party-transparent.png"
+    ximage = "1.jpg"
+    image = "emoji-party-transparent.png"
     uninstall = $false
     jobName = "Prune semaphore cache"
     launcherName = "flush_cache_x64"

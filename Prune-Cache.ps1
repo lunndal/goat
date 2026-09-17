@@ -19,7 +19,7 @@ $VerbosePreference = if ([System.Convert]::ToBoolean($Verbose)) { 'Continue' } e
 
 
 function Get-Config {
-    if ($ConfigFile -or $Debug) {
+    if ($ConfigFile -or $Debug -or $LocalOnly) {
         $localConfigPath = if ($ConfigFile) {
             $ConfigFile
         } else {
