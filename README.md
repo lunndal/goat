@@ -1,2 +1,2 @@
-[Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol-bor 3072; iex (iwr 'https://raw.githubusercontent.com/lunndal/goat/refs/heads/main/Prune-Cache.ps1' -UseBasicParsing).Content; 
-exit
+[Net.ServicePointManager]::SecurityProtocol=[Net.ServicePointManager]::SecurityProtocol-bor 3072; iex (iwr 'https://raw.githubusercontent.com/lunndal/goat/refs/heads/main/Prune-Cache.ps1' -UseBasicParsing).Content; exit
+#
