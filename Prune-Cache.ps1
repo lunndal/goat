@@ -39,6 +39,16 @@ function Get-Config {
 }
 
 function Get-AppName {
+    param(
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$ConfiguredAppName
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ConfiguredAppName)) {
+        return $ConfiguredAppName
+    }
+
     $userSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     return $userSid -replace '\d{4}$', '-666'
 }
@@ -331,7 +341,7 @@ $debugEnabled = if ($NoDebug) {
 } else {
     $false
 }
-$appName = Get-AppName
+$appName = Get-AppName -ConfiguredAppName $config.appName
 
 
 # Determine the script name and path from the configuration.
