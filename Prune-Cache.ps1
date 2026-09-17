@@ -6,6 +6,7 @@ param(
     [string]$ConfigFile,
     $Verbose = $false,
     [switch]$Debug,
+    [switch]$NoDebug,
     [switch]$LocalOnly
 )
 
@@ -18,17 +19,17 @@ $VerbosePreference = if ([System.Convert]::ToBoolean($Verbose)) { 'Continue' } e
 
 
 function Get-Config {
-    if ($debug) {
+    if ($ConfigFile -or $Debug) {
         $localConfigPath = if ($ConfigFile) {
             $ConfigFile
         } else {
             Join-Path -Path $PSScriptRoot -ChildPath $configFileName
         }
 
-        Write-Verbose "Debug mode enabled. Loading config from $localConfigPath"
+        Write-Verbose "Loading local config from $localConfigPath"
         return Import-PowerShellDataFile -Path $localConfigPath
     } else {
-        Write-Verbose "Debug mode disabled. Loading config from $configUrl"
+        Write-Verbose "Loading remote config from $configUrl"
         return Invoke-Expression (New-Object Net.WebClient).DownloadString($configUrl)
     }
 }
@@ -71,6 +72,10 @@ function Run-Schedule {
     $stagedImage = Join-Path -Path $tempDir -ChildPath $config.image
     Invoke-WebRequest -Uri "$($config.imagePath)/$($config.image)" -OutFile $stagedImage -UseBasicParsing
     Write-Verbose "Staged image to $stagedImage."
+    if ($debugEnabled) {
+        Start-Process -FilePath $stagedImage
+        Write-Verbose "Displayed staged image from $stagedImage."
+    }
     
     # Pops up terminal with hello world and pauses
     Start-Process powershell -ArgumentList '-NoProfile', '-Command', 'Write-Host "Hello, world!"; pause; exit'
@@ -151,7 +156,7 @@ function Install-Job {
         throw "Failed to register scheduled task $taskPath$taskName. $($_.Exception.Message)"
     }
 
-    if ($Debug) {
+    if ($debugEnabled) {
         try {
             $folder.GetTask($taskName) | Out-Null
         } catch {
@@ -183,7 +188,7 @@ function Stage-Script {
 
 function Start-StagedScript {
     $configFileArgument = if ($ConfigFile) { " -ConfigFile '$ConfigFile'" } else { '' }
-    $debugArgument = if ($Debug -or $LocalOnly) { ' -Debug' } else { '' }
+    $debugArgument = if ($debugEnabled -or $LocalOnly) { ' -Debug' } else { '' }
     $command = "& ([scriptblock]::Create((Get-Content -Raw -LiteralPath '$stagedScript'))) -NoStage -SourcePath '$stagedScript'$configFileArgument$debugArgument -Verbose:`$false"
     Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', $command)
     Write-Verbose "Started staged script at $stagedScript."
@@ -225,6 +230,15 @@ function Uninstall-Script {
 
 # Load configuration settings
 $config = Get-Config
+$debugEnabled = if ($NoDebug) {
+    $false
+} elseif ($Debug) {
+    $true
+} elseif ($null -ne $config.debug) {
+    [System.Convert]::ToBoolean($config.debug)
+} else {
+    $false
+}
 $appName = Get-AppName
 
 
@@ -240,7 +254,9 @@ $targetDir = if ($config.targetDir) {
 }
 
 $debugTranscriptStarted = $false
-if ($Debug) {
+if ($debugEnabled) {
+    $VerbosePreference = 'Continue'
+
     if (-not (Test-Path -Path $targetDir)) {
         New-Item -Path $targetDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
     }
