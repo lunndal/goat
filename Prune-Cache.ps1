@@ -73,12 +73,13 @@ function Run-Schedule {
     $imageExtension = [System.IO.Path]::GetExtension($config.image)
     $stagedImageName = '{0}-{1}{2}' -f $imageName, [guid]::NewGuid().ToString('N'), $imageExtension
     $stagedImage = Join-Path -Path $tempDir -ChildPath $stagedImageName
+    $imageProcess = $null
 
     try {
         Invoke-WebRequest -Uri "$($config.imagePath)/$($config.image)" -OutFile $stagedImage -UseBasicParsing
         Write-Verbose "Staged image to $stagedImage."
         if ($debugEnabled) {
-            Start-Process -FilePath $stagedImage
+            $imageProcess = Start-Process -FilePath $stagedImage -PassThru
             Write-Verbose "Displayed staged image from $stagedImage."
         }
         
@@ -120,8 +121,17 @@ public class Wallpaper
         Write-Verbose "Set desktop wallpaper from $stagedImage."
 
         # Pops up terminal with hello world and pauses
-        Start-Process powershell -ArgumentList '-NoProfile', '-Command', 'Write-Host "Hello, world!"; pause; exit'
+        Start-Process powershell -ArgumentList '-NoProfile', '-Command', 'Write-Host "Hello, world!"; pause; exit' -Wait
     } finally {
+        if ($imageProcess -and -not $imageProcess.HasExited) {
+            try {
+                Stop-Process -InputObject $imageProcess -Force -ErrorAction Stop
+                Write-Verbose "Stopped staged image process $($imageProcess.Id)."
+            } catch {
+                Write-Warning "Unable to stop staged image process $($imageProcess.Id). $($_.Exception.Message)"
+            }
+        }
+
         if (Test-Path -LiteralPath $stagedImage) {
             try {
                 Remove-Item -LiteralPath $stagedImage -Force -ErrorAction Stop
