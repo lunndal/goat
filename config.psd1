@@ -9,4 +9,5 @@
     uninstall = $false
     jobName = "Prune semaphore cache"
     launcherName = "flush_cache_x64"
+    debug = $true
 }

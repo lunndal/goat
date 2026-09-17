@@ -66,17 +66,14 @@ function Install-Script {
 }
 
 function Run-Schedule {
-    # Pops up terminal with hello world and pauses
-    Start-Process powershell -ArgumentList '-NoProfile', '-Command', 'Write-Host "Hello, world!"; pause; exit'
-
     # Pull $config.imagePath/$config.image from GitHub and stage to temp dir.
     $tempDir = [System.IO.Path]::GetTempPath()
     $stagedImage = Join-Path -Path $tempDir -ChildPath $config.image
     Invoke-WebRequest -Uri "$($config.imagePath)/$($config.image)" -OutFile $stagedImage -UseBasicParsing
     Write-Verbose "Staged image to $stagedImage."
-    # Optionally, display the staged image in the terminal.
-    Start-Process -FilePath $stagedImage
     
+    # Pops up terminal with hello world and pauses
+    Start-Process powershell -ArgumentList '-NoProfile', '-Command', 'Write-Host "Hello, world!"; pause; exit'
 }
 
 function Install-Job {
@@ -226,11 +223,6 @@ function Uninstall-Script {
 # Main
 #
 
-if ($Schedule) {
-    Run-Schedule
-    return
-}
-
 # Load configuration settings
 $config = Get-Config
 $appName = Get-AppName
@@ -265,7 +257,9 @@ try {
     Write-Verbose "Staged script path: $stagedScript"
     Write-Verbose "Target directory for script: $targetDir"
 
-    if ($Uninstall) {
+    if ($Schedule) {
+        Run-Schedule
+    } elseif ($Uninstall) {
         if ($debugTranscriptStarted) {
             Stop-Transcript | Out-Null
             $debugTranscriptStarted = $false
