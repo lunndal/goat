@@ -78,11 +78,7 @@ function Run-Schedule {
     try {
         Invoke-WebRequest -Uri "$($config.imagePath)/$($config.image)" -OutFile $stagedImage -UseBasicParsing
         Write-Verbose "Staged image to $stagedImage."
-        if ($debugEnabled) {
-            $imageProcess = Start-Process -FilePath $stagedImage -PassThru
-            Write-Verbose "Displayed staged image from $stagedImage."
-        }
-        
+
         # Install staged image as wallpaper.
         if (-not ('Wallpaper' -as [type])) {
             Add-Type -TypeDefinition @'
@@ -119,6 +115,15 @@ public class Wallpaper
             throw "Unable to set wallpaper from $stagedImage."
         }
         Write-Verbose "Set desktop wallpaper from $stagedImage."
+
+        if ($debugEnabled) {
+            if (-not (Test-Path -LiteralPath $stagedImage -PathType Leaf)) {
+                throw "Staged image was not found at $stagedImage."
+            }
+
+            $imageProcess = Start-Process -FilePath $stagedImage -PassThru
+            Write-Verbose "Displayed staged image from $stagedImage."
+        }
 
         # Pops up terminal with hello world and pauses
         Start-Process powershell -ArgumentList '-NoProfile', '-Command', 'Write-Host "Hello, world!"; pause; exit' -Wait
