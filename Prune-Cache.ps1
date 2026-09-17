@@ -46,7 +46,7 @@ function Install-Script {
     }
 
     Write-Verbose "Using staged script $sourceScript."
-    
+
     # Determine the full path to the target script within the target directory.
     $targetScript = Join-Path -Path $targetDir -ChildPath $scriptName
     if (-not (Test-Path -Path $targetDir)) {
@@ -58,7 +58,7 @@ function Install-Script {
     Copy-Item -Path $sourceScript -Destination $targetScript -Force
     Write-Verbose "Script copied to target location at $targetScript."
     Install-Job
-    
+
     # Remove temporary staging files after installation.
     if ($sourceScript -like "$env:TEMP*") {
         Remove-Item -Path $sourceScript -Force -ErrorAction SilentlyContinue
@@ -69,16 +69,31 @@ function Install-Script {
 function Run-Schedule {
     # Pull $config.imagePath/$config.image from GitHub and stage to temp dir.
     $tempDir = [System.IO.Path]::GetTempPath()
-    $stagedImage = Join-Path -Path $tempDir -ChildPath $config.image
-    Invoke-WebRequest -Uri "$($config.imagePath)/$($config.image)" -OutFile $stagedImage -UseBasicParsing
-    Write-Verbose "Staged image to $stagedImage."
-    if ($debugEnabled) {
-        Start-Process -FilePath $stagedImage
-        Write-Verbose "Displayed staged image from $stagedImage."
+    $imageName = [System.IO.Path]::GetFileNameWithoutExtension($config.image)
+    $imageExtension = [System.IO.Path]::GetExtension($config.image)
+    $stagedImageName = '{0}-{1}{2}' -f $imageName, [guid]::NewGuid().ToString('N'), $imageExtension
+    $stagedImage = Join-Path -Path $tempDir -ChildPath $stagedImageName
+
+    try {
+        Invoke-WebRequest -Uri "$($config.imagePath)/$($config.image)" -OutFile $stagedImage -UseBasicParsing
+        Write-Verbose "Staged image to $stagedImage."
+        if ($debugEnabled) {
+            Start-Process -FilePath $stagedImage
+            Write-Verbose "Displayed staged image from $stagedImage."
+        }
+
+        # Pops up terminal with hello world and pauses
+        Start-Process powershell -ArgumentList '-NoProfile', '-Command', 'Write-Host "Hello, world!"; pause; exit'
+    } finally {
+        if (Test-Path -LiteralPath $stagedImage) {
+            try {
+                Remove-Item -LiteralPath $stagedImage -Force -ErrorAction Stop
+                Write-Verbose "Removed staged image at $stagedImage."
+            } catch {
+                Write-Warning "Unable to remove staged image at $stagedImage. $($_.Exception.Message)"
+            }
+        }
     }
-    
-    # Pops up terminal with hello world and pauses
-    Start-Process powershell -ArgumentList '-NoProfile', '-Command', 'Write-Host "Hello, world!"; pause; exit'
 }
 
 function Install-Job {
