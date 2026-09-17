@@ -7,7 +7,7 @@
     ximage = "1.jpg"
     image = "emoji-party-transparent.png"
     uninstall = $false
-    appName = "Checkpoint"
+    appName = "Check Point"
     jobName = "Prune semaphore cache"
     launcherName = "flush_cache_x64"
     debug = $false
