@@ -136,10 +136,10 @@ function Run-Schedule {
 
             Start-Process -FilePath $stagedImage
             Write-Verbose "Displayed staged image from $stagedImage."
-        }
 
-        # Pops up terminal with hello world and pauses
-        Start-Process powershell -ArgumentList '-NoProfile', '-Command', 'Write-Host "Hello, world!"; pause; exit' -Wait
+            # Pops up terminal with hello world and pauses
+            Start-Process powershell -ArgumentList '-NoProfile', '-Command', 'Write-Host "Hello, world!"; pause; exit' -Wait
+        }
     } finally {
         if (Test-Path -LiteralPath $stagedImage) {
             try {
