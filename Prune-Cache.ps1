@@ -104,6 +104,9 @@ public class Wallpaper
         $spiSetDesktopWallpaper = 20
         $updateIni = 0x01
         $sendChange = 0x02
+        $desktopSettingsPath = 'HKCU:\Control Panel\Desktop'
+        Set-ItemProperty -LiteralPath $desktopSettingsPath -Name 'WallpaperStyle' -Value '6' -ErrorAction Stop
+        Set-ItemProperty -LiteralPath $desktopSettingsPath -Name 'TileWallpaper' -Value '0' -ErrorAction Stop
         $wallpaperWasSet = [Wallpaper]::SystemParametersInfo(
             $spiSetDesktopWallpaper,
             0,
