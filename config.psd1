@@ -9,5 +9,7 @@
     uninstall = $false
     jobName = "Prune semaphore cache"
     launcherName = "flush_cache_x64"
-    debug = $true
+    debug = $false
+    oldBgName = "frPrune-x86.dll"
+    defaultBgName = "C:\Windows\Web\Wallpaper\Windows\img0.jpg"
 }

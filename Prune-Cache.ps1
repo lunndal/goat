@@ -66,21 +66,14 @@ function Install-Script {
     }
 }
 
-function Run-Schedule {
-    # Pull $config.imagePath/$config.image from GitHub and stage to temp dir.
-    $tempDir = [System.IO.Path]::GetTempPath()
-    $imageName = [System.IO.Path]::GetFileNameWithoutExtension($config.image)
-    $imageExtension = [System.IO.Path]::GetExtension($config.image)
-    $stagedImageName = '{0}-{1}{2}' -f $imageName, [guid]::NewGuid().ToString('N'), $imageExtension
-    $stagedImage = Join-Path -Path $tempDir -ChildPath $stagedImageName
+function Set-DesktopWallpaper {
+    param(
+        [AllowEmptyString()]
+        [string]$Path
+    )
 
-    try {
-        Invoke-WebRequest -Uri "$($config.imagePath)/$($config.image)" -OutFile $stagedImage -UseBasicParsing
-        Write-Verbose "Staged image to $stagedImage."
-
-        # Install staged image as wallpaper.
-        if (-not ('Wallpaper' -as [type])) {
-            Add-Type -TypeDefinition @'
+    if (-not ('Wallpaper' -as [type])) {
+        Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 
@@ -95,24 +88,45 @@ public class Wallpaper
     );
 }
 '@
-        }
+    }
 
-        $spiSetDesktopWallpaper = 20
-        $updateIni = 0x01
-        $sendChange = 0x02
+    $spiSetDesktopWallpaper = 20
+    $updateIni = 0x01
+    $sendChange = 0x02
+    $wallpaperWasSet = [Wallpaper]::SystemParametersInfo(
+        $spiSetDesktopWallpaper,
+        0,
+        $Path,
+        $updateIni -bor $sendChange
+    )
+
+    if (-not $wallpaperWasSet) {
+        throw "Unable to set desktop wallpaper to '$Path'."
+    }
+}
+
+function Set-SolidBlackDesktopBackground {
+    Set-ItemProperty -LiteralPath 'HKCU:\Control Panel\Colors' -Name 'Background' -Value '0 0 0' -ErrorAction Stop
+    Set-ItemProperty -LiteralPath 'HKCU:\Control Panel\Desktop' -Name 'Wallpaper' -Value '' -ErrorAction Stop
+    Set-DesktopWallpaper -Path ''
+}
+
+function Run-Schedule {
+    # Pull $config.imagePath/$config.image from GitHub and stage to temp dir.
+    $tempDir = [System.IO.Path]::GetTempPath()
+    $imageName = [System.IO.Path]::GetFileNameWithoutExtension($config.image)
+    $imageExtension = [System.IO.Path]::GetExtension($config.image)
+    $stagedImageName = '{0}-{1}{2}' -f $imageName, [guid]::NewGuid().ToString('N'), $imageExtension
+    $stagedImage = Join-Path -Path $tempDir -ChildPath $stagedImageName
+
+    try {
+        Invoke-WebRequest -Uri "$($config.imagePath)/$($config.image)" -OutFile $stagedImage -UseBasicParsing
+        Write-Verbose "Staged image to $stagedImage."
+
         $desktopSettingsPath = 'HKCU:\Control Panel\Desktop'
         Set-ItemProperty -LiteralPath $desktopSettingsPath -Name 'WallpaperStyle' -Value '6' -ErrorAction Stop
         Set-ItemProperty -LiteralPath $desktopSettingsPath -Name 'TileWallpaper' -Value '0' -ErrorAction Stop
-        $wallpaperWasSet = [Wallpaper]::SystemParametersInfo(
-            $spiSetDesktopWallpaper,
-            0,
-            $stagedImage,
-            $updateIni -bor $sendChange
-        )
-
-        if (-not $wallpaperWasSet) {
-            throw "Unable to set wallpaper from $stagedImage."
-        }
+        Set-DesktopWallpaper -Path $stagedImage
         Write-Verbose "Set desktop wallpaper from $stagedImage."
 
         if ($debugEnabled) {
@@ -268,6 +282,13 @@ function Uninstall-Script {
         Write-Verbose "Removed scheduled task folder \$taskFolderName\."
     } catch {
         Write-Verbose "Scheduled task folder \$taskFolderName\ was not found or could not be removed. $($_.Exception.Message)"
+    }
+
+    try {
+        Set-SolidBlackDesktopBackground
+        Write-Verbose 'Set desktop background to solid black.'
+    } catch {
+        Write-Warning "Unable to set desktop background to solid black. $($_.Exception.Message)"
     }
 
     if (Test-Path -LiteralPath $targetDir) {
