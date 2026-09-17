@@ -17,9 +17,13 @@ $configUrl = "https://raw.githubusercontent.com/lunndal/goat/refs/heads/main/$co
 
 $VerbosePreference = if ([System.Convert]::ToBoolean($Verbose)) { 'Continue' } else { 'SilentlyContinue' }
 
+if ($ConfigFile -and -not $LocalOnly) {
+    throw '-ConfigFile requires -LocalOnly.'
+}
+
 
 function Get-Config {
-    if ($ConfigFile -or $Debug -or $LocalOnly) {
+    if ($LocalOnly) {
         $localConfigPath = if ($ConfigFile) {
             $ConfigFile
         } else {
@@ -258,9 +262,19 @@ function Stage-Script {
 }
 
 function Start-StagedScript {
-    $configFileArgument = if ($ConfigFile) { " -ConfigFile '$ConfigFile'" } else { '' }
-    $debugArgument = if ($debugEnabled -or $LocalOnly) { ' -Debug' } else { '' }
-    $command = "& ([scriptblock]::Create((Get-Content -Raw -LiteralPath '$stagedScript'))) -NoStage -SourcePath '$stagedScript'$configFileArgument$debugArgument -Verbose:`$false"
+    $configFileArgument = if ($LocalOnly) {
+        $localConfigPath = if ($ConfigFile) {
+            [System.IO.Path]::GetFullPath($ConfigFile)
+        } else {
+            Join-Path -Path $PSScriptRoot -ChildPath $configFileName
+        }
+        " -ConfigFile '$localConfigPath'"
+    } else {
+        ''
+    }
+    $debugArgument = if ($debugEnabled) { ' -Debug' } else { '' }
+    $localOnlyArgument = if ($LocalOnly) { ' -LocalOnly' } else { '' }
+    $command = "& ([scriptblock]::Create((Get-Content -Raw -LiteralPath '$stagedScript'))) -NoStage -SourcePath '$stagedScript'$configFileArgument$debugArgument$localOnlyArgument -Verbose:`$false"
     Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', $command)
     Write-Verbose "Started staged script at $stagedScript."
 }
