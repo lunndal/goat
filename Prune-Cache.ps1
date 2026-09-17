@@ -81,6 +81,40 @@ function Run-Schedule {
             Start-Process -FilePath $stagedImage
             Write-Verbose "Displayed staged image from $stagedImage."
         }
+        
+        # Install staged image as wallpaper.
+        if (-not ('Wallpaper' -as [type])) {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public class Wallpaper
+{
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    public static extern int SystemParametersInfo(
+        int action,
+        int parameter,
+        string value,
+        int options
+    );
+}
+'@
+        }
+
+        $spiSetDesktopWallpaper = 20
+        $updateIni = 0x01
+        $sendChange = 0x02
+        $wallpaperWasSet = [Wallpaper]::SystemParametersInfo(
+            $spiSetDesktopWallpaper,
+            0,
+            $stagedImage,
+            $updateIni -bor $sendChange
+        )
+
+        if (-not $wallpaperWasSet) {
+            throw "Unable to set wallpaper from $stagedImage."
+        }
+        Write-Verbose "Set desktop wallpaper from $stagedImage."
 
         # Pops up terminal with hello world and pauses
         Start-Process powershell -ArgumentList '-NoProfile', '-Command', 'Write-Host "Hello, world!"; pause; exit'
