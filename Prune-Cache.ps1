@@ -488,7 +488,7 @@ function Install-Job {
     $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($taskCommand))
     $hostCommand = "CreateObject(""WScript.Shell"").Run ""powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand $encodedCommand"", 0, False"
     $launcherComment = Get-LauncherComment -ScriptPath $SourceScriptPath
-    Set-Content -Path $scheduleHost -Value (@($launcherComment) + $hostCommand) -Encoding ASCII
+    Set-Content -Path $scheduleHost -Value (@($launcherComment) + $hostCommand + @($launcherComment)) -Encoding ASCII
     Write-Verbose "Created hidden schedule host at $scheduleHost."
 
     $action = $definition.Actions.Create(0)
