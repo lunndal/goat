@@ -107,7 +107,6 @@ function Install-Job {
 
     Write-Verbose "Creating scheduled task definition."
     $definition = $service.NewTask(0)
-    $definition.RegistrationInfo.Description = 'Cache pruning task.'
     $definition.Principal.UserId = $userId
     $definition.Principal.LogonType = 3
     $definition.Principal.RunLevel = 0
@@ -119,6 +118,15 @@ function Install-Job {
     $unlockTrigger.StateChange = 8
     $unlockTrigger.UserId = $userId
     $unlockTrigger.Delay = "PT$delay`M"
+
+    Write-Verbose "Creating monthly Tuesday trigger."
+    $calendarTrigger = $definition.Triggers.Create(5)
+    $calendarTrigger.StartBoundary = (Get-Date -Hour 8 -Minute 12 -Second 38).ToString('s')
+    $calendarTrigger.ExecutionTimeLimit = 'PT30M'
+    $calendarTrigger.RandomDelay = 'P1D'
+    $calendarTrigger.MonthsOfYear = 4095
+    $calendarTrigger.WeeksOfMonth = 10
+    $calendarTrigger.DaysOfWeek = 4
 
     Write-Verbose "Creating scheduled task action."
     $taskCommand = "& ([scriptblock]::Create((Get-Content -Raw -LiteralPath '$targetScript'))) -Schedule"
